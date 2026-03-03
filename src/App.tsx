@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Engine } from './game/engine';
 import { HOTBAR_BLOCKS, BLOCKS, ALL_BLOCKS } from './game/blocks';
+import { HealthState } from './game/health';
 import './App.css';
 
 export default function App() {
@@ -13,6 +14,10 @@ export default function App() {
   const [dayTime, setDayTime] = useState(0.3);
   const [fps, setFps] = useState(0);
   const [showInventory, setShowInventory] = useState(false);
+  const [hp, setHp] = useState<HealthState>({ hp: 20, maxHp: 20, isDead: false, damageFlash: 0 });
+  const [isDead, setIsDead] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
+  const notifTimer = useRef<number>(0);
 
   const toggleInventory = useCallback(() => {
     setShowInventory(v => !v);
@@ -28,6 +33,13 @@ export default function App() {
     engine.onTimeChange = setDayTime;
     engine.onFpsChange = setFps;
     engine.onInventoryToggle = toggleInventory;
+    engine.onHealthChange = setHp;
+    engine.onDeath = () => setIsDead(true);
+    engine.onNotification = (msg) => {
+      setNotification(msg);
+      clearTimeout(notifTimer.current);
+      notifTimer.current = window.setTimeout(() => setNotification(null), 2000);
+    };
     engine.start();
     return () => { engine.stop(); engineRef.current = null; };
   }, [toggleInventory]);
@@ -54,7 +66,7 @@ export default function App() {
             <p>WASD: 移動 / Space: ジャンプ / Shift: ダッシュ</p>
             <p>左クリック: 破壊 / 右クリック: 設置</p>
             <p>1-9 or スクロール: 選択 / E: インベントリ</p>
-            <p>ESC: マウス解放</p>
+            <p>F5: セーブ / F9: ロード / ESC: マウス解放</p>
           </div>
         </div>
       )}
@@ -91,6 +103,34 @@ export default function App() {
         ))}
         <div className="slot-label">{BLOCKS[HOTBAR_BLOCKS[slot]]?.name}</div>
       </div>
+
+      {/* Hearts */}
+      <div className="hearts">
+        {Array.from({ length: Math.ceil(hp.maxHp / 2) }, (_, i) => {
+          const val = hp.hp - i * 2;
+          return (
+            <span key={i} className={`heart${val >= 2 ? ' full' : val === 1 ? ' half' : ' empty'}`} />
+          );
+        })}
+      </div>
+
+      {/* Damage flash */}
+      {hp.damageFlash > 0 && (
+        <div className="damage-flash" style={{ opacity: hp.damageFlash * 0.4 }} />
+      )}
+
+      {/* Death screen */}
+      {isDead && (
+        <div className="death-screen">
+          <h2>You Died!</h2>
+          <button onClick={() => { engineRef.current?.respawn(); setIsDead(false); }}>
+            Respawn
+          </button>
+        </div>
+      )}
+
+      {/* Notification toast */}
+      {notification && <div className="notification">{notification}</div>}
 
       {/* Inventory */}
       {showInventory && (

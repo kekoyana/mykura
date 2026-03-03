@@ -2,14 +2,15 @@ import * as THREE from 'three';
 
 const TEX_SIZE = 16;
 const ATLAS_COLS = 4;
-const ATLAS_ROWS = 5; // 20 slots
+const ATLAS_ROWS = 6; // 24 slots
 
 function hexToRgb(hex: string): [number, number, number] {
   return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
 }
 
 type Pattern = 'solid' | 'grass_top' | 'grass_side' | 'wood_side' | 'wood_top'
-  | 'stone' | 'leaves' | 'water' | 'bedrock' | 'ore' | 'glass';
+  | 'stone' | 'leaves' | 'water' | 'bedrock' | 'ore' | 'glass'
+  | 'torch' | 'flower_red' | 'flower_yellow' | 'tall_grass' | 'brick' | 'cactus_top' | 'cactus_side';
 
 function drawTexture(
   ctx: CanvasRenderingContext2D, ox: number, oy: number,
@@ -71,15 +72,89 @@ function drawTexture(
         }
         case 'glass':
           cr = 200 + n * 0.3; cg = 220 + n * 0.3; cb = 240 + n * 0.3;
-          // Glass grid lines
           if (px === 0 || py === 0 || px === 15 || py === 15) {
             cr = 180; cg = 200; cb = 220;
           }
-          // Highlight
           if ((px === 3 || px === 4) && (py === 2 || py === 3)) {
             cr = 240; cg = 250; cb = 255;
           }
           break;
+        case 'torch': {
+          // Transparent background with stick in center
+          const inStick = px >= 6 && px <= 9;
+          if (!inStick) { cr = 0; cg = 0; cb = 0; ctx.fillStyle = 'rgba(0,0,0,0)'; ctx.clearRect(ox + px, oy + py, 1, 1); continue; }
+          if (py < 3) { cr = 255 + n * 0.2; cg = 200 + n * 0.3; cb = 50; } // flame
+          else if (py < 5) { cr = 200 + n * 0.3; cg = 120 + n * 0.3; cb = 20; } // ember
+          else { cr = 140 + n * 0.5; cg = 100 + n * 0.3; cb = 50 + n * 0.2; } // wood stick
+          break;
+        }
+        case 'flower_red': {
+          const cx2 = 8, cy2 = 6;
+          const dx = px - cx2, dy = py - cy2;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 3) { cr = 220 + n * 0.5; cg = 30 + n * 0.3; cb = 30 + n * 0.3; } // petals
+          else if (dist < 4 && py > 5) { cr = 255; cg = 220; cb = 50; } // center
+          else if (px >= 7 && px <= 8 && py >= 9) { cr = 50 + n * 0.3; cg = 140 + n * 0.5; cb = 30; } // stem
+          else { ctx.clearRect(ox + px, oy + py, 1, 1); continue; }
+          break;
+        }
+        case 'flower_yellow': {
+          const cx3 = 8, cy3 = 5;
+          const dx = px - cx3, dy = py - cy3;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 3.5) { cr = 255 + n * 0.2; cg = 210 + n * 0.3; cb = 30; } // petals
+          else if (px >= 7 && px <= 8 && py >= 8) { cr = 50 + n * 0.3; cg = 140 + n * 0.5; cb = 30; } // stem
+          else { ctx.clearRect(ox + px, oy + py, 1, 1); continue; }
+          break;
+        }
+        case 'tall_grass': {
+          // Grass blades
+          const blade1 = Math.abs(px - 4) < 1.5 && py > 3;
+          const blade2 = Math.abs(px - 8) < 1.5 && py > 1;
+          const blade3 = Math.abs(px - 12) < 1.5 && py > 4;
+          const blade4 = Math.abs(px - 6) < 1 && py > 5;
+          if (blade1 || blade2 || blade3 || blade4) {
+            cr = 60 + n * 0.8; cg = 140 + n; cb = 40 + n * 0.3;
+          } else { ctx.clearRect(ox + px, oy + py, 1, 1); continue; }
+          break;
+        }
+        case 'brick': {
+          // Brick pattern
+          const brickH = 4; // brick height
+          const brickW = 8; // brick width
+          const row2 = Math.floor(py / brickH);
+          const offset = (row2 % 2) * (brickW / 2);
+          const inMortarY = py % brickH === 0;
+          const inMortarX = ((px + offset) % brickW) === 0;
+          if (inMortarY || inMortarX) {
+            cr = 180 + n * 0.5; cg = 175 + n * 0.5; cb = 165 + n * 0.5; // mortar
+          } else {
+            cr = r + n * 0.8; cg = g + n * 0.5; cb = b + n * 0.4; // brick face
+          }
+          break;
+        }
+        case 'cactus_top': {
+          const dx = px - 8, dy = py - 8;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 6) {
+            cr = 30 + n * 0.5; cg = 120 + n; cb = 30 + n * 0.3;
+            if (dist < 2) { cr += 20; cg += 30; } // lighter center
+          } else {
+            cr = 20 + n * 0.3; cg = 90 + n * 0.5; cb = 20 + n * 0.2; // darker edge
+          }
+          break;
+        }
+        case 'cactus_side': {
+          cr = 30 + n * 0.5; cg = 120 + n; cb = 35 + n * 0.3;
+          // vertical ridges
+          const ridge = Math.sin(px * 1.2) * 15;
+          cr += ridge * 0.5; cg += ridge; cb += ridge * 0.3;
+          // spines
+          if ((py % 4 === 0) && (px % 3 === 1) && rand() < 0.5) {
+            cr = 200; cg = 200; cb = 150;
+          }
+          break;
+        }
         default:
           cr = r + n; cg = g + n; cb = b + n;
       }
@@ -114,6 +189,13 @@ export function createTextureAtlas(): THREE.CanvasTexture {
     { color: '#808080', pattern: 'ore', oreColor: '#D4A574' },  // 14 iron
     { color: '#808080', pattern: 'ore', oreColor: '#44E8E8' },  // 15 diamond
     { color: '#D4EEFF', pattern: 'glass' },            // 16 glass
+    { color: '#FFA500', pattern: 'torch' },             // 17 torch
+    { color: '#FF3030', pattern: 'flower_red' },        // 18 red flower
+    { color: '#FFD700', pattern: 'flower_yellow' },     // 19 yellow flower
+    { color: '#4A8A2A', pattern: 'tall_grass' },        // 20 tall grass
+    { color: '#9B4A3C', pattern: 'brick' },             // 21 brick
+    { color: '#2D8A2D', pattern: 'cactus_top' },        // 22 cactus top
+    { color: '#2D8A2D', pattern: 'cactus_side' },       // 23 cactus side
   ];
 
   textures.forEach((tex, i) => {

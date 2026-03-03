@@ -5,6 +5,10 @@ import { BlockType, BLOCKS, HOTBAR_BLOCKS } from './blocks';
 import { ParticleSystem } from './particles';
 import { SoundManager } from './sounds';
 import { CloudLayer } from './clouds';
+import { SkySystem } from './sky';
+import { HealthSystem, HealthState } from './health';
+import { GameStorage, rleEncode, rleDecode } from './storage';
+import { Chunk, CHUNK_SIZE, CHUNK_HEIGHT } from './chunk';
 
 const DAY_COLOR = new THREE.Color(0x87ceeb);
 const NIGHT_COLOR = new THREE.Color(0x0a0a2e);
@@ -19,6 +23,9 @@ export class Engine {
   particles: ParticleSystem;
   sounds: SoundManager;
   clouds: CloudLayer;
+  sky: SkySystem;
+  health: HealthSystem;
+  storage: GameStorage;
   selectedSlot = 0;
 
   private highlight: THREE.LineSegments;
@@ -27,7 +34,7 @@ export class Engine {
   private lastTime = 0;
   private rafId = 0;
   private locked = false;
-  private dayTime = 0.3; // 0=midnight, 0.25=dawn, 0.5=noon, 0.75=dusk
+  private dayTime = 0.3;
   private fps = 0;
   private frameCount = 0;
   private fpsTimer = 0;
@@ -38,6 +45,9 @@ export class Engine {
   onTimeChange?: (dayTime: number) => void;
   onFpsChange?: (fps: number) => void;
   onInventoryToggle?: () => void;
+  onHealthChange?: (state: HealthState) => void;
+  onDeath?: () => void;
+  onNotification?: (msg: string) => void;
 
   constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
@@ -62,6 +72,12 @@ export class Engine {
     this.particles = new ParticleSystem(this.scene);
     this.sounds = new SoundManager();
     this.clouds = new CloudLayer(this.scene);
+    this.sky = new SkySystem(this.scene);
+    this.health = new HealthSystem(this.player.position.y);
+    this.storage = new GameStorage();
+
+    this.health.onHpChange = (state) => this.onHealthChange?.(state);
+    this.health.onDeath = () => this.onDeath?.();
 
     const hlEdges = new THREE.EdgesGeometry(new THREE.BoxGeometry(1.005, 1.005, 1.005));
     this.highlight = new THREE.LineSegments(hlEdges, new THREE.LineBasicMaterial({ color: 0x000000 }));
@@ -138,6 +154,8 @@ export class Engine {
       if (e.key.toLowerCase() === 'e' && this.locked) {
         this.onInventoryToggle?.();
       }
+      if (e.key === 'F5') { e.preventDefault(); this.saveGame(); }
+      if (e.key === 'F9') { e.preventDefault(); this.loadGame(); }
     });
 
     document.addEventListener('keyup', (e) => this.player.onKeyUp(e.key));
@@ -185,9 +203,17 @@ export class Engine {
     this.updateLighting();
 
     this.player.update(dt);
+
+    // Health & fall damage
+    if (!this.health.state.isDead) {
+      const hr = this.health.update(dt, this.player.position.y, this.player.onGround, this.player.inWater);
+      if (hr.damaged) this.sounds.playHurt();
+    }
+
     this.world.update(this.player.position.x, this.player.position.z);
     this.particles.update(dt);
     this.clouds.update(dt, this.player.position.x, this.player.position.z);
+    this.sky.update(this.dayTime, this.player.position);
 
     // Water tint
     if (this.player.inWater) {
@@ -217,6 +243,66 @@ export class Engine {
 
     this.renderer.render(this.scene, this.camera);
   };
+
+  respawn() {
+    const sx = 0, sz = 0;
+    const sy = this.world.getSpawnHeight(sx, sz);
+    this.player.position.set(sx + 0.5, sy, sz + 0.5);
+    this.player.velocity.set(0, 0, 0);
+    this.health.respawn(sy);
+  }
+
+  async saveGame() {
+    const chunks: Record<string, number[]> = {};
+    for (const [key, chunk] of this.world.chunks) {
+      chunks[key] = rleEncode(chunk.blocks);
+    }
+    await this.storage.save({
+      chunks,
+      playerX: this.player.position.x,
+      playerY: this.player.position.y,
+      playerZ: this.player.position.z,
+      playerYaw: this.player.yaw,
+      playerPitch: this.player.pitch,
+      selectedSlot: this.selectedSlot,
+      dayTime: this.dayTime,
+      timestamp: Date.now(),
+    });
+    this.onNotification?.('Game saved');
+  }
+
+  async loadGame() {
+    const data = await this.storage.load();
+    if (!data) { this.onNotification?.('No save found'); return; }
+
+    // Clear existing chunks
+    for (const [, chunk] of this.world.chunks) {
+      if (chunk.mesh) { this.world.scene.remove(chunk.mesh); chunk.mesh.geometry.dispose(); }
+      if (chunk.waterMesh) { this.world.scene.remove(chunk.waterMesh); chunk.waterMesh.geometry.dispose(); }
+    }
+    this.world.chunks.clear();
+
+    // Restore chunks
+    const blockCount = CHUNK_SIZE * CHUNK_HEIGHT * CHUNK_SIZE;
+    for (const [key, rle] of Object.entries(data.chunks)) {
+      const [cx, cz] = key.split(',').map(Number);
+      const chunk = new Chunk(cx, cz);
+      chunk.blocks = rleDecode(rle, blockCount);
+      chunk.needsUpdate = true;
+      this.world.chunks.set(key, chunk);
+    }
+
+    // Restore player
+    this.player.position.set(data.playerX, data.playerY, data.playerZ);
+    this.player.yaw = data.playerYaw;
+    this.player.pitch = data.playerPitch;
+    this.player.velocity.set(0, 0, 0);
+    this.selectedSlot = data.selectedSlot;
+    this.dayTime = data.dayTime;
+    this.health.respawn(data.playerY);
+    this.onHotbarChange?.(this.selectedSlot);
+    this.onNotification?.('Game loaded');
+  }
 
   private updateLighting() {
     const sunAngle = this.dayTime * Math.PI * 2 - Math.PI / 2;

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { World } from './world';
-import { BlockType } from './blocks';
+import { BlockType, BLOCKS } from './blocks';
 
 const WALK_SPEED = 4.5;
 const SPRINT_SPEED = 7;
@@ -113,7 +113,9 @@ export class Player {
       for (let by = Math.floor(p.y); by <= Math.floor(p.y + PLAYER_HEIGHT); by++)
         for (let bz = Math.floor(p.z - PLAYER_WIDTH); bz <= Math.floor(p.z + PLAYER_WIDTH); bz++) {
           const b = this.world.getBlock(bx, by, bz);
-          if (b === BlockType.AIR || b === BlockType.WATER) continue;
+          if (b === BlockType.AIR) continue;
+          const bi = BLOCKS[b];
+          if (bi && !bi.solid) continue;
           return true;
         }
     return false;

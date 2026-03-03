@@ -3,7 +3,16 @@
     "allow": [
       "Bash(npm install three 2>&1 | tail -5)",
       "Bash(npx tsc --noEmit 2>&1)",
-      "Bash(npx vite --host 2>&1 | head -20)"
+      "Bash(npx vite --host 2>&1 | head -20)",
+      "Bash(gh repo view --json name,url 2>&1)",
+      "Bash(npm run build 2>&1)",
+      "Bash(npm install --save-dev @types/three 2>&1 | tail -3)",
+      "Bash(gh api repos/kekoyana/mykura/pages 2>&1 || echo \"Pages not configured yet\")",
+      "Bash(gh api repos/kekoyana/mykura/pages -X POST -f build_type=workflow 2>&1)",
+      "Bash(git status -u)",
+      "Bash(git add .github/workflows/deploy.yml package.json package-lock.json vite.config.ts)",
+      "Bash(git commit -m \"$\\(cat <<'EOF'\nAdd GitHub Pages deployment\n\n- Configure vite base path for /mykura/\n- Add GitHub Actions workflow for Pages deployment\n- Add @types/three dev dependency\n\nCo-Authored-By: Claude Opus 4.6 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push origin main 2>&1)"
     ]
   }
 }

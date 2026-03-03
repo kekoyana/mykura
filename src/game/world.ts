@@ -136,6 +136,39 @@ export class World {
       }
     }
 
+    // Decorations (tall grass, flowers, cactus)
+    for (let lz = 0; lz < CHUNK_SIZE; lz++) {
+      for (let lx = 0; lx < CHUNK_SIZE; lx++) {
+        const wx = cx * CHUNK_SIZE + lx;
+        const wz = cz * CHUNK_SIZE + lz;
+        const h = this.getHeight(wx, wz);
+        if (h <= WATER_LEVEL) continue;
+        const biome = this.getBiome(wx, wz);
+        const surface = chunk.getBlock(lx, h, lz);
+        const above = chunk.getBlock(lx, h + 1, lz);
+        if (above !== BlockType.AIR) continue;
+
+        const dv = this.treeNoise.noise2d(wx * 1.3 + 100, wz * 1.3 + 100);
+
+        if (surface === BlockType.GRASS) {
+          if (dv > 0.15 && dv < 0.55) {
+            chunk.setBlock(lx, h + 1, lz, BlockType.TALL_GRASS);
+          } else if (dv > 0.7 && dv < 0.73) {
+            chunk.setBlock(lx, h + 1, lz, BlockType.FLOWER_RED);
+          } else if (dv > 0.75 && dv < 0.78) {
+            chunk.setBlock(lx, h + 1, lz, BlockType.FLOWER_YELLOW);
+          }
+        }
+
+        if (biome === 'desert' && surface === BlockType.SAND && dv > 0.55 && dv < 0.57) {
+          const cactusH = 1 + Math.floor(Math.abs(this.treeNoise.noise2d(wx * 2.1, wz * 2.1)) * 3);
+          for (let cy = 1; cy <= cactusH; cy++) {
+            chunk.setBlock(lx, h + cy, lz, BlockType.CACTUS);
+          }
+        }
+      }
+    }
+
     // Trees
     for (let lz = 2; lz < CHUNK_SIZE - 2; lz++) {
       for (let lx = 2; lx < CHUNK_SIZE - 2; lx++) {

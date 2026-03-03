@@ -101,7 +101,105 @@ export class Chunk {
           if (!info) continue;
           const isLiquid = info.liquid;
           const buf = isLiquid ? water : solid;
+          const rt = info.renderType;
 
+          // Cross-shaped rendering (flowers, tall grass)
+          if (rt === 'cross') {
+            const texId = info.textures[1];
+            const [u0, v0, u1, v1] = getAtlasUV(texId);
+            const bx = wx0 + x, bz = wz0 + z;
+            // Two diagonal quads
+            const crossQuads = [
+              [[0,0,0],[1,0,1],[1,1,1],[0,1,0]], // diagonal 1
+              [[0,0,1],[1,0,0],[1,1,0],[0,1,1]], // diagonal 2
+            ];
+            for (const quad of crossQuads) {
+              for (const c of quad) {
+                buf.pos.push(bx + c[0], y + c[1], bz + c[2]);
+                buf.norm.push(0, 1, 0);
+                buf.col.push(1, 1, 1);
+              }
+              buf.uv.push(u0,v0, u1,v0, u1,v1, u0,v1);
+              buf.idx.push(buf.v, buf.v+1, buf.v+2, buf.v, buf.v+2, buf.v+3);
+              buf.v += 4;
+              // Back face
+              for (const c of [...quad].reverse()) {
+                buf.pos.push(bx + c[0], y + c[1], bz + c[2]);
+                buf.norm.push(0, 1, 0);
+                buf.col.push(1, 1, 1);
+              }
+              buf.uv.push(u0,v0, u1,v0, u1,v1, u0,v1);
+              buf.idx.push(buf.v, buf.v+1, buf.v+2, buf.v, buf.v+2, buf.v+3);
+              buf.v += 4;
+            }
+            continue;
+          }
+
+          // Torch rendering (thin pillar)
+          if (rt === 'torch') {
+            const texId = info.textures[1];
+            const [u0, v0, u1, v1] = getAtlasUV(texId);
+            const bx = wx0 + x, bz = wz0 + z;
+            const inset = 0.35;
+            // 4 side faces of thin pillar
+            const torchFaces = [
+              { corners: [[1-inset,0,1-inset],[1-inset,0,inset],[1-inset,1,inset],[1-inset,1,1-inset]], n: [1,0,0] },
+              { corners: [[inset,0,inset],[inset,0,1-inset],[inset,1,1-inset],[inset,1,inset]], n: [-1,0,0] },
+              { corners: [[inset,0,1-inset],[1-inset,0,1-inset],[1-inset,1,1-inset],[inset,1,1-inset]], n: [0,0,1] },
+              { corners: [[1-inset,0,inset],[inset,0,inset],[inset,1,inset],[1-inset,1,inset]], n: [0,0,-1] },
+            ];
+            for (const tf of torchFaces) {
+              for (const c of tf.corners) {
+                buf.pos.push(bx + c[0], y + c[1], bz + c[2]);
+                buf.norm.push(tf.n[0], tf.n[1], tf.n[2]);
+                buf.col.push(1, 1, 1);
+              }
+              buf.uv.push(u0,v0, u1,v0, u1,v1, u0,v1);
+              buf.idx.push(buf.v, buf.v+1, buf.v+2, buf.v, buf.v+2, buf.v+3);
+              buf.v += 4;
+            }
+            // Top face
+            const [tu0, tv0, tu1, tv1] = getAtlasUV(info.textures[0]);
+            const topCorners = [[inset,1,1-inset],[1-inset,1,1-inset],[1-inset,1,inset],[inset,1,inset]];
+            for (const c of topCorners) {
+              buf.pos.push(bx + c[0], y + c[1], bz + c[2]);
+              buf.norm.push(0, 1, 0);
+              buf.col.push(1, 1, 1);
+            }
+            buf.uv.push(tu0,tv0, tu1,tv0, tu1,tv1, tu0,tv1);
+            buf.idx.push(buf.v, buf.v+1, buf.v+2, buf.v, buf.v+2, buf.v+3);
+            buf.v += 4;
+            continue;
+          }
+
+          // Cactus rendering (slightly inset from edges)
+          if (rt === 'cactus') {
+            const bx = wx0 + x, bz = wz0 + z;
+            const ci = 0.0625; // 1/16 inset
+            const cactusFaces = [
+              { corners: [[1-ci,0,1],[1-ci,0,0],[1-ci,1,0],[1-ci,1,1]], n: [1,0,0], texIdx: 1 },
+              { corners: [[ci,0,0],[ci,0,1],[ci,1,1],[ci,1,0]], n: [-1,0,0], texIdx: 1 },
+              { corners: [[0,0,1-ci],[1,0,1-ci],[1,1,1-ci],[0,1,1-ci]], n: [0,0,1], texIdx: 1 },
+              { corners: [[1,0,ci],[0,0,ci],[0,1,ci],[1,1,ci]], n: [0,0,-1], texIdx: 1 },
+              { corners: [[0,1,1],[1,1,1],[1,1,0],[0,1,0]], n: [0,1,0], texIdx: 0 },
+              { corners: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]], n: [0,-1,0], texIdx: 2 },
+            ];
+            for (const cf of cactusFaces) {
+              const texId = info.textures[cf.texIdx];
+              const [cu0, cv0, cu1, cv1] = getAtlasUV(texId);
+              for (const c of cf.corners) {
+                buf.pos.push(bx + c[0], y + c[1], bz + c[2]);
+                buf.norm.push(cf.n[0], cf.n[1], cf.n[2]);
+                buf.col.push(1, 1, 1);
+              }
+              buf.uv.push(cu0,cv0, cu1,cv0, cu1,cv1, cu0,cv1);
+              buf.idx.push(buf.v, buf.v+1, buf.v+2, buf.v, buf.v+2, buf.v+3);
+              buf.v += 4;
+            }
+            continue;
+          }
+
+          // Standard block rendering
           for (const face of FACES) {
             const nx = x + face.dir[0], ny = y + face.dir[1], nz = z + face.dir[2];
             const neighbor = getBlockAt(nx, ny, nz);
@@ -115,7 +213,6 @@ export class Chunk {
             const texId = info.textures[face.texIdx];
             const [u0, v0, u1, v1] = getAtlasUV(texId);
 
-            // Compute AO for each vertex
             const aoVals: number[] = [];
             for (const c of face.corners) {
               if (isLiquid) {
@@ -128,7 +225,6 @@ export class Chunk {
             for (let i = 0; i < 4; i++) {
               const c = face.corners[i];
               let cy = c[1];
-              // Lower water surface slightly
               if (isLiquid && face.texIdx === 0 && cy === 1) cy = 0.85;
               buf.pos.push(wx0 + x + c[0], y + cy, wz0 + z + c[2]);
               buf.norm.push(face.dir[0], face.dir[1], face.dir[2]);
@@ -137,7 +233,6 @@ export class Chunk {
             }
             buf.uv.push(u0,v0, u1,v0, u1,v1, u0,v1);
 
-            // Flip quad based on AO to fix anisotropy
             if (aoVals[0] + aoVals[2] > aoVals[1] + aoVals[3]) {
               buf.idx.push(buf.v, buf.v+1, buf.v+2, buf.v, buf.v+2, buf.v+3);
             } else {

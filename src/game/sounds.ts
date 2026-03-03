@@ -23,6 +23,24 @@ export class SoundManager {
     src.start();
   }
 
+  playHurt() {
+    const ctx = this.ensure();
+    const len = ctx.sampleRate * 0.2;
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      const t = i / ctx.sampleRate;
+      d[i] = Math.sin(t * 400 * Math.PI * 2) * (1 - i / len) * 0.2
+            + (Math.random() * 2 - 1) * (1 - i / len) * 0.15;
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const gain = ctx.createGain();
+    gain.gain.value = 0.5;
+    src.connect(gain).connect(ctx.destination);
+    src.start();
+  }
+
   playPlace() {
     const ctx = this.ensure();
     const len = ctx.sampleRate * 0.08;
